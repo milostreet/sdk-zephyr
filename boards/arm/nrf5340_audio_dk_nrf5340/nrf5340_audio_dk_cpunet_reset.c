@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020 Nordic Semiconductor ASA
  *
- * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <zephyr/kernel.h>
@@ -9,13 +9,10 @@
 #include <zephyr/logging/log.h>
 
 #include <soc.h>
-#include <zephyr/drivers/gpio.h>
 
-#include "nrfx_gpiote.h"
+#include <nrfx_gpiote.h>
 
 LOG_MODULE_REGISTER(nrf5340_audio_dk_nrf5340_cpuapp, CONFIG_LOG_DEFAULT_LEVEL);
-
-#if !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE)
 
 #if defined(CONFIG_BT_CTLR_DEBUG_PINS_CPUAPP)
 #include <../subsys/bluetooth/controller/ll_sw/nordic/hal/nrf5/debug.h>
@@ -25,7 +22,6 @@ LOG_MODULE_REGISTER(nrf5340_audio_dk_nrf5340_cpuapp, CONFIG_LOG_DEFAULT_LEVEL);
 
 static int core_config(void)
 {
-	int ret;
 	nrf_gpiote_latency_t latency;
 
 	latency = nrfx_gpiote_latency_get();
@@ -35,50 +31,36 @@ static int core_config(void)
 		nrfx_gpiote_latency_set(NRF_GPIOTE_LATENCY_LOWPOWER);
 	}
 
-	/* Disable board revision readback as default */
-	static const struct gpio_dt_spec board_id_en =
-		GPIO_DT_SPEC_GET(DT_NODELABEL(board_id_en_out), gpios);
-
-	if (!device_is_ready(board_id_en.port)) {
-		LOG_ERR("GPIO is not ready!");
-		return -ENXIO;
-	}
-
-	ret = gpio_pin_configure_dt(&board_id_en, GPIO_OUTPUT_LOW);
-	if (ret) {
-		return ret;
-	}
-
 	return 0;
 }
 
 static void remoteproc_mgr_config(void)
 {
+#if !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE) || defined(CONFIG_BUILD_WITH_TFM)
 	/* Route Bluetooth Controller Debug Pins */
 	DEBUG_SETUP();
+#endif /* !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE) || defined(CONFIG_BUILD_WITH_TFM) */
 
+#if !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE)
 	/* Retain nRF5340 Network MCU in Secure domain (bus
 	 * accesses by Network MCU will have Secure attribute set).
 	 */
 	NRF_SPU->EXTDOMAIN[0].PERM = 1 << 4;
+#endif /* !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE) */
 }
-#endif /* !CONFIG_TRUSTED_EXECUTION_NONSECURE */
 
-static int remoteproc_mgr_boot(const struct device *dev)
+static int remoteproc_mgr_boot(void)
 {
 	int ret;
 
-	ARG_UNUSED(dev);
 
 	ret = core_config();
 	if (ret) {
 		return ret;
 	}
 
-#if !defined(CONFIG_TRUSTED_EXECUTION_NONSECURE)
 	/* Secure domain may configure permissions for the Network MCU. */
 	remoteproc_mgr_config();
-#endif /* !CONFIG_TRUSTED_EXECUTION_NONSECURE */
 
 #if !defined(CONFIG_TRUSTED_EXECUTION_SECURE)
 	/*
